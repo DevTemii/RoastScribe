@@ -42,6 +42,9 @@ PIVOTS = [
 ]
 
 
+STOPWORDS = {"our", "a", "an", "the", "my", "we", "this", "that", "it", "is", "its", "i", "its", "your", "for", "of", "to"}
+
+
 def _pick(items: list[str], seed: int, offset: int = 0) -> str:
     return items[(seed + offset) % len(items)]
 
@@ -51,7 +54,7 @@ def _name(parsed: ParsedInput) -> str:
         return parsed.title
     if parsed.title and parsed.source in {"url"}:
         return re.split(r"[|\-–—:]", parsed.title)[0].strip()[:40] or "Unnamed Product"
-    words = re.findall(r"[A-Za-z][\w'-]+", parsed.text)
+    words = [w for w in re.findall(r"[A-Za-z][\w'-]+", parsed.text) if w.lower() not in STOPWORDS]
     return " ".join(w.capitalize() for w in words[:2]) or "Unnamed Product"
 
 

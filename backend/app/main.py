@@ -13,6 +13,8 @@ app = FastAPI(title="RoastScribe API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
+    # Next.js hops to 3001+ when 3000 is busy, so accept any local dev port.
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
     allow_methods=["*"],
     allow_headers=["*"],
 )
