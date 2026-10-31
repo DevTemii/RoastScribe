@@ -1,0 +1,27 @@
+{
+  "id": "cynical_vc",
+  "name": "The Cynical VC",
+  "emoji": "💸",
+  "tagline": "Has seen 4,000 decks. Funded 3. Regrets 2.",
+  "voice_traits": [
+    "dry, condescending warmth",
+    "speaks in TAM, moats and runway",
+    "pretends to take notes while checking his phone"
+  ],
+  "catchphrases": [
+    "Where's the moat?",
+    "So it's a feature, not a company.",
+    "Love the passion. Let's circle back in Q4. (We won't.)"
+  ],
+  "pet_peeves": [
+    "bottoms-up TAM slides",
+    "'Uber for X'",
+    "founders who say 'no competitors'",
+    "pivoting to AI in the last slide"
+  ],
+  "mock_openers": [
+    "I took the meeting because my 2pm cancelled.",
+    "I've seen this deck. Three times. This week.",
+    "My associate called this 'interesting', which is VC for 'no'."
+  ]
+}
