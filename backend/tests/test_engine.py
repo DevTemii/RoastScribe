@@ -49,6 +49,54 @@ async def test_falls_back_to_mock_when_ollama_down(monkeypatch):
     assert r.engine == "mock"
 
 
+GOOD = {
+    "product_name": "Dogly",
+    "one_line_summary": "A dog walking app.",
+    "roast_title": "Fetch Funding",
+    "the_burn": ["a", "b", "c"],
+    "cringe_metrics": {
+        "buzzword_score": "5/10",
+        "buzzwords_found": [],
+        "uniqueness_rating": "Clone",
+        "survival_probability": "20%",
+    },
+    "the_rescue": {"fatal_flaw": "x", "who_might_actually_pay": "y", "the_pivot": "z"},
+}
+
+
+async def test_gemma_api_key_path(monkeypatch):
+    import json
+
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["key"] = request.headers.get("x-goog-api-key")
+        seen["url"] = str(request.url)
+        text = "```json\n" + json.dumps(GOOD) + "\n```"
+        return httpx.Response(200, json={"candidates": [{"content": {"parts": [{"text": text}]}}]})
+
+    real = httpx.AsyncClient
+    monkeypatch.setattr(
+        gemma_client.httpx, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(handler), **kw)
+    )
+    monkeypatch.setattr(gemma_client, "settings", replace(settings, gemma_api_key="k-123", force_mock=False))
+    r = await gemma_client.roast(parse_text(PITCH), load_personas()["cynical_vc"], 2)
+    assert r.engine == "gemma" and r.product_name == "Dogly"
+    assert seen["key"] == "k-123" and "gemma" in seen["url"] and seen["url"].endswith(":generateContent")
+
+
+async def test_bad_api_key_falls_through_to_mock(monkeypatch):
+    real = httpx.AsyncClient
+    monkeypatch.setattr(
+        gemma_client.httpx,
+        "AsyncClient",
+        lambda **kw: real(transport=httpx.MockTransport(lambda r: httpx.Response(403)), **kw),
+    )
+    monkeypatch.setattr(gemma_client, "settings", replace(settings, gemma_api_key="bad", force_mock=False))
+    r = await gemma_client.roast(parse_text(PITCH), load_personas()["cynical_vc"], 2)
+    assert r.engine == "mock"
+
+
 def test_api_roast_end_to_end(monkeypatch):
     monkeypatch.setattr(gemma_client, "settings", replace(settings, force_mock=True))
     c =TestClient(app)

@@ -46,7 +46,11 @@ flowchart LR
 
 **Prerequisites:** Python 3.10+, Node 18+, and (optionally) [Ollama](https://ollama.com).
 
-### 1. Model *(optional)*
+### 1. Model *(pick one, or neither for the mock engine)*
+
+**Hosted Gemma (API key):** create a key at <https://aistudio.google.com/apikey>, then put `GEMMA_API_KEY=...` in `backend/.env` (see `backend/.env.example`). Order of preference: API key → Ollama → mock.
+
+**Local Ollama:**
 
 ```bash
 ollama pull gemma2:2b        # or gemma2:9b for sharper burns
@@ -80,6 +84,8 @@ The result card shows `engine: gemma` or `engine: mock` so you always know which
 
 | Env var | Default | Purpose |
 |---|---|---|
+| `GEMMA_API_KEY` | *(none)* | Hosted Gemma via [Google AI Studio](https://aistudio.google.com/apikey). Takes priority over Ollama |
+| `GEMMA_API_MODEL` | `gemma-3-27b-it` | Hosted Gemma model id |
 | `OLLAMA_HOST` | `http://localhost:11434` | Ollama endpoint |
 | `ROAST_TEXT_MODEL` | `gemma2:2b` | Text model |
 | `ROAST_VISION_MODEL` | `paligemma` | Screenshot captioning model |

@@ -1,4 +1,4 @@
-"""Ollama / Gemma 2 integration with an automatic mock fallback."""
+"""Gemma integration: hosted API (key) or local Ollama, with an automatic mock fallback."""
 import json
 import logging
 import re
@@ -71,16 +71,56 @@ async def _ask_gemma(parsed: ParsedInput, persona: Persona, spice: int) -> Roast
     return result
 
 
+async def _ask_gemma_api(parsed: ParsedInput, persona: Persona, spice: int) -> RoastResponse:
+    """Hosted Gemma through the Google AI Studio API (authenticated with an API key).
+
+    Gemma models on this API reject `system_instruction` and JSON mode, so the
+    persona prompt is sent as part of the user turn and the JSON is parsed
+    defensively.
+    """
+    buzz = find_buzzwords(parsed.text)
+    prompt = f"{build_system_prompt(persona, spice, buzz)}\n\n{build_user_prompt(parsed)}"
+    parts: list[dict] = [{"text": prompt}]
+    if parsed.image_b64:
+        parts.append({"inline_data": {"mime_type": "image/jpeg", "data": parsed.image_b64}})
+
+    async with httpx.AsyncClient(timeout=settings.ollama_timeout) as client:
+        resp = await client.post(
+            f"{settings.gemma_api_base}/models/{settings.gemma_api_model}:generateContent",
+            headers={"x-goog-api-key": settings.gemma_api_key or ""},
+            json={
+                "contents": [{"role": "user", "parts": parts}],
+                "generationConfig": {"temperature": 0.9 if spice > 1 else 0.7},
+            },
+        )
+        resp.raise_for_status()
+        text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+    result = RoastResponse.model_validate({**extract_json(text), "engine": "gemma", "persona": persona.id})
+    if buzz and not result.cringe_metrics.buzzwords_found:
+        result.cringe_metrics.buzzwords_found = buzz[:8]
+    return result
+
+
 async def roast(parsed: ParsedInput, persona: Persona, spice: int) -> RoastResponse:
-    """Try Gemma via Ollama (twice, for malformed JSON); fall back to the mock."""
+    """Hosted Gemma API (if a key is set) -> Ollama -> mock. Each gets two tries for bad JSON."""
     if settings.force_mock:
         return generate_mock_roast(parsed, persona, spice)
-    for attempt in (1, 2):
-        try:
-            return await _ask_gemma(parsed, persona, spice)
-        except (json.JSONDecodeError, ValidationError, KeyError) as exc:
-            log.warning("Gemma returned unusable JSON (attempt %d): %s", attempt, exc)
-        except httpx.HTTPError as exc:
-            log.warning("Ollama unavailable (%s); using mock engine.", exc.__class__.__name__)
-            break
+
+    providers = []
+    if settings.gemma_api_key:
+        providers.append(("Gemma API", _ask_gemma_api))
+    providers.append(("Ollama", _ask_gemma))
+
+    for name, ask in providers:
+        for attempt in (1, 2):
+            try:
+                return await ask(parsed, persona, spice)
+            except (json.JSONDecodeError, ValidationError, KeyError, IndexError) as exc:
+                log.warning("%s returned unusable JSON (attempt %d): %s", name, attempt, exc)
+            except httpx.HTTPStatusError as exc:
+                log.warning("%s rejected the request (HTTP %s); trying next provider.", name, exc.response.status_code)
+                break
+            except httpx.HTTPError as exc:
+                log.warning("%s unavailable (%s); trying next provider.", name, exc.__class__.__name__)
+                break
     return generate_mock_roast(parsed, persona, spice)
