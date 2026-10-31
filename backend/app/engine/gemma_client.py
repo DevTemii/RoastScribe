@@ -72,6 +72,53 @@ async def _ask_gemma(parsed: ParsedInput, persona: Persona, spice: int) -> Roast
     return result
 
 
+_resolved_model: str | None = None
+
+
+def _rank(name: str) -> tuple:
+    """Newest version first, then biggest instruction-tuned model that is still fast."""
+    m = re.search(r"gemma-?(\d+(?:\.\d+)?)", name)
+    size = re.search(r"(\d+)b", name)
+    return (
+        float(m.group(1)) if m else 0.0,
+        "-it" in name,
+        # 27b/31b are slow & often rate-limited; prefer them anyway only if nothing smaller is newer
+        int(size.group(1)) if size else 0,
+    )
+
+
+async def list_gemma_models(client: httpx.AsyncClient) -> list[str]:
+    """Gemma models this key can call with generateContent, best first."""
+    resp = await client.get(
+        f"{settings.gemma_api_base}/models",
+        headers={"x-goog-api-key": settings.gemma_api_key or ""},
+        params={"pageSize": 200},
+    )
+    resp.raise_for_status()
+    names = [
+        m["name"].removeprefix("models/")
+        for m in resp.json().get("models", [])
+        if "gemma" in m["name"] and "generateContent" in m.get("supportedGenerationMethods", [])
+    ]
+    return sorted(names, key=_rank, reverse=True)
+
+
+async def _model_for_api(client: httpx.AsyncClient) -> str:
+    global _resolved_model
+    if settings.gemma_api_model:
+        return settings.gemma_api_model
+    if _resolved_model is None:
+        models = await list_gemma_models(client)
+        if not models:
+            raise EngineError(
+                "Your API key has no Gemma models that support generateContent. "
+                "Check /api/status, or set GEMMA_API_MODEL explicitly."
+            )
+        _resolved_model = models[0]
+        log.info("Auto-selected Gemma model: %s (candidates: %s)", _resolved_model, models)
+    return _resolved_model
+
+
 async def _ask_gemma_api(parsed: ParsedInput, persona: Persona, spice: int) -> RoastResponse:
     """Hosted Gemma through the Google AI Studio API (authenticated with an API key).
 
@@ -85,15 +132,19 @@ async def _ask_gemma_api(parsed: ParsedInput, persona: Persona, spice: int) -> R
     if parsed.image_b64:
         parts.append({"inline_data": {"mime_type": "image/jpeg", "data": parsed.image_b64}})
 
+    global _resolved_model
     async with httpx.AsyncClient(timeout=settings.ollama_timeout) as client:
+        model = await _model_for_api(client)
         resp = await client.post(
-            f"{settings.gemma_api_base}/models/{settings.gemma_api_model}:generateContent",
+            f"{settings.gemma_api_base}/models/{model}:generateContent",
             headers={"x-goog-api-key": settings.gemma_api_key or ""},
             json={
                 "contents": [{"role": "user", "parts": parts}],
                 "generationConfig": {"temperature": 0.9 if spice > 1 else 0.7, "maxOutputTokens": 1800},
             },
         )
+        if resp.status_code == 404:
+            _resolved_model = None  # re-discover next time
         resp.raise_for_status()
         text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
     result = RoastResponse.model_validate({**extract_json(text), "engine": "gemma", "persona": persona.id})

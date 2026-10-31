@@ -85,7 +85,7 @@ The result card shows `engine: gemma` or `engine: mock` so you always know which
 | Env var | Default | Purpose |
 |---|---|---|
 | `GEMMA_API_KEY` | *(none)* | Hosted Gemma via [Google AI Studio](https://aistudio.google.com/apikey). Takes priority over Ollama |
-| `GEMMA_API_MODEL` | `gemma-3-27b-it` | Hosted Gemma model id |
+| `GEMMA_API_MODEL` | *(auto)* | Pin a model id; empty = auto-pick the best Gemma your key supports (see `/api/status`) |
 | `OLLAMA_HOST` | `http://localhost:11434` | Ollama endpoint |
 | `ROAST_TEXT_MODEL` | `gemma2:2b` | Text model |
 | `ROAST_VISION_MODEL` | `paligemma` | Screenshot captioning model |

@@ -4,7 +4,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
-from .engine.gemma_client import EngineError, roast
+from .engine.gemma_client import EngineError, list_gemma_models, roast
 from .parsers import ParseError, parse_input
 from .plugins import load_personas
 from .schemas.roast import RoastRequest, RoastResponse
@@ -55,24 +55,19 @@ async def status() -> dict:
     info: dict = {
         "mode": "gemma_api" if settings.gemma_api_key else ("mock" if settings.force_mock else "ollama_or_mock"),
         "gemma_api_key_set": bool(settings.gemma_api_key),
-        "model": settings.gemma_api_model if settings.gemma_api_key else settings.text_model,
+        "model": settings.gemma_api_model or "(auto)" if settings.gemma_api_key else settings.text_model,
     }
     if settings.gemma_api_key:
         try:
             async with httpx.AsyncClient(timeout=15) as c:
-                r = await c.get(
-                    f"{settings.gemma_api_base}/models",
-                    headers={"x-goog-api-key": settings.gemma_api_key},
-                    params={"pageSize": 200},
-                )
-            if r.status_code != 200:
-                info["api_ok"] = False
-                info["error"] = f"HTTP {r.status_code}: {r.text[:200]}"
-            else:
-                names = [m["name"].removeprefix("models/") for m in r.json().get("models", [])]
-                info["api_ok"] = True
-                info["model_available"] = settings.gemma_api_model in names
-                info["available_gemma_models"] = [n for n in names if "gemma" in n]
+                models = await list_gemma_models(c)
+            info["api_ok"] = True
+            info["usable_gemma_models"] = models
+            info["will_use"] = settings.gemma_api_model or (models[0] if models else None)
+            if settings.gemma_api_model:
+                info["configured_model_usable"] = settings.gemma_api_model in models
+        except httpx.HTTPStatusError as exc:
+            info.update(api_ok=False, error=f"HTTP {exc.response.status_code}: {exc.response.text[:200]}")
         except httpx.HTTPError as exc:
             info.update(api_ok=False, error=exc.__class__.__name__)
     return info

@@ -71,6 +71,18 @@ async def test_gemma_api_key_path(monkeypatch):
     seen = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":  # ListModels
+            return httpx.Response(
+                200,
+                json={
+                    "models": [
+                        {"name": "models/gemini-2.0-flash", "supportedGenerationMethods": ["generateContent"]},
+                        {"name": "models/gemma-3-12b-it", "supportedGenerationMethods": ["generateContent"]},
+                        {"name": "models/gemma-3-27b-it", "supportedGenerationMethods": ["countTokens"]},
+                        {"name": "models/gemma-3n-e4b-it", "supportedGenerationMethods": ["generateContent"]},
+                    ]
+                },
+            )
         seen["key"] = request.headers.get("x-goog-api-key")
         seen["url"] = str(request.url)
         text = "```json\n" + json.dumps(GOOD) + "\n```"
@@ -80,10 +92,14 @@ async def test_gemma_api_key_path(monkeypatch):
     monkeypatch.setattr(
         gemma_client.httpx, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(handler), **kw)
     )
-    monkeypatch.setattr(gemma_client, "settings", replace(settings, gemma_api_key="k-123", force_mock=False))
+    monkeypatch.setattr(gemma_client, "_resolved_model", None)
+    monkeypatch.setattr(
+        gemma_client, "settings", replace(settings, gemma_api_key="k-123", gemma_api_model="", force_mock=False)
+    )
     r = await gemma_client.roast(parse_text(PITCH), load_personas()["cynical_vc"], 2)
     assert r.engine == "gemma" and r.product_name == "Dogly"
-    assert seen["key"] == "k-123" and "gemma" in seen["url"] and seen["url"].endswith(":generateContent")
+    # auto-discovery skips non-generateContent models and picks the best usable Gemma
+    assert seen["key"] == "k-123" and "/models/gemma-3-12b-it:generateContent" in seen["url"]
 
 
 async def test_bad_api_key_raises_instead_of_faking(monkeypatch):

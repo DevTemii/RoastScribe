@@ -17,7 +17,8 @@ def _split(value: str) -> list[str]:
 class Settings:
     # Hosted Gemma via the Google AI Studio (Gemini) API. Takes priority over Ollama.
     gemma_api_key: str | None = os.getenv("GEMMA_API_KEY") or os.getenv("GOOGLE_API_KEY")
-    gemma_api_model: str = os.getenv("GEMMA_API_MODEL", "gemma-3-27b-it")
+    # Empty = auto-discover the best Gemma model your key can use (ListModels).
+    gemma_api_model: str = os.getenv("GEMMA_API_MODEL", "").strip()
     gemma_api_base: str = os.getenv(
         "GEMMA_API_BASE", "https://generativelanguage.googleapis.com/v1beta"
     )
