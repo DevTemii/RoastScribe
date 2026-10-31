@@ -6,6 +6,7 @@ export const FALLBACK_PERSONAS: Persona[] = [
   { id: "gordon_ramsay", name: "Chef Gordon", emoji: "🍳", tagline: "This landing page is so raw it's still mooing.", catchphrases: [] },
   { id: "senior_architect", name: "The Senior Architect", emoji: "🏗️", tagline: "Has an opinion about your folder structure. It's negative.", catchphrases: [] },
   { id: "gen_z_founder", name: "The Gen Z Founder", emoji: "💅", tagline: "Shipped three apps before lunch. All of them mid.", catchphrases: [] },
+  { id: "nigerian_chef", name: "Chef Tunde", emoji: "🍲", tagline: "This startup’s flavor is as flat as pap without palm oil.", catchphrases: [] }
 ];
 
 export const REPO_URL = process.env.NEXT_PUBLIC_REPO_URL ?? "https://github.com/your-org/roast-my-product";
