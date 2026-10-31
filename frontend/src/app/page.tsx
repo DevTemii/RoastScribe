@@ -9,7 +9,9 @@ import Navbar from "@/components/Navbar";
 import PersonaPicker from "@/components/PersonaPicker";
 import RoastCard from "@/components/RoastCard";
 import { createRoast, fetchPersonas } from "@/lib/api";
+import ShareButtons from "@/components/ShareButtons";
 import { FALLBACK_PERSONAS } from "@/lib/personas";
+import { THEMES, type CardTheme } from "@/lib/themes";
 import type { Persona, RoastResult, SpiceLevel } from "@/types";
 
 const LOADING_LINES = [
@@ -29,7 +31,9 @@ export default function Home() {
   const [lineIdx, setLineIdx] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<RoastResult | null>(null);
+  const [theme, setTheme] = useState<CardTheme>(THEMES[0]);
   const resultRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchPersonas()
@@ -127,7 +131,14 @@ export default function Home() {
               className="mt-16 scroll-mt-6"
               aria-label="Your roast receipt"
             >
-              <RoastCard result={result} personaName={active?.name} personaEmoji={active?.emoji} />
+              <RoastCard
+                ref={cardRef}
+                result={result}
+                personaName={active?.name}
+                personaEmoji={active?.emoji}
+                theme={theme}
+              />
+              <ShareButtons cardRef={cardRef} result={result} theme={theme} onTheme={setTheme} />
             </motion.section>
           )}
         </AnimatePresence>
