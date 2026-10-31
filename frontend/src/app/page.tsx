@@ -131,6 +131,12 @@ export default function Home() {
               className="mt-16 scroll-mt-6"
               aria-label="Your roast receipt"
             >
+              {result.engine === "mock" && (
+                <p role="status" className="mx-auto mb-4 max-w-xl border-2 border-hot bg-hot/10 p-3 text-sm text-slate-200">
+                  ⚠️ <strong>Demo mode:</strong> this roast came from the offline mock engine, not an AI model. Set{" "}
+                  <code className="font-mono">GEMMA_API_KEY</code> on the backend to get real Gemma roasts.
+                </p>
+              )}
               <RoastCard
                 ref={cardRef}
                 result={result}

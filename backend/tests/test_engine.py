@@ -1,6 +1,7 @@
 from dataclasses import replace
 
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 
 from app.config import settings
@@ -85,16 +86,18 @@ async def test_gemma_api_key_path(monkeypatch):
     assert seen["key"] == "k-123" and "gemma" in seen["url"] and seen["url"].endswith(":generateContent")
 
 
-async def test_bad_api_key_falls_through_to_mock(monkeypatch):
+async def test_bad_api_key_raises_instead_of_faking(monkeypatch):
+    body = {"error": {"message": "API key not valid"}}
     real = httpx.AsyncClient
     monkeypatch.setattr(
         gemma_client.httpx,
         "AsyncClient",
-        lambda **kw: real(transport=httpx.MockTransport(lambda r: httpx.Response(403)), **kw),
+        lambda **kw: real(transport=httpx.MockTransport(lambda r: httpx.Response(403, json=body)), **kw),
     )
     monkeypatch.setattr(gemma_client, "settings", replace(settings, gemma_api_key="bad", force_mock=False))
-    r = await gemma_client.roast(parse_text(PITCH), load_personas()["cynical_vc"], 2)
-    assert r.engine == "mock"
+    with pytest.raises(gemma_client.EngineError) as e:
+        await gemma_client.roast(parse_text(PITCH), load_personas()["cynical_vc"], 2)
+    assert "403" in str(e.value) and "API key not valid" in str(e.value)
 
 
 def test_api_roast_end_to_end(monkeypatch):

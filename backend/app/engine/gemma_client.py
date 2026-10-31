@@ -1,4 +1,5 @@
 """Gemma integration: hosted API (key) or local Ollama, with an automatic mock fallback."""
+import asyncio
 import json
 import logging
 import re
@@ -90,7 +91,7 @@ async def _ask_gemma_api(parsed: ParsedInput, persona: Persona, spice: int) -> R
             headers={"x-goog-api-key": settings.gemma_api_key or ""},
             json={
                 "contents": [{"role": "user", "parts": parts}],
-                "generationConfig": {"temperature": 0.9 if spice > 1 else 0.7},
+                "generationConfig": {"temperature": 0.9 if spice > 1 else 0.7, "maxOutputTokens": 1800},
             },
         )
         resp.raise_for_status()
@@ -106,21 +107,46 @@ async def roast(parsed: ParsedInput, persona: Persona, spice: int) -> RoastRespo
     if settings.force_mock:
         return generate_mock_roast(parsed, persona, spice)
 
-    providers = []
+    # A configured API key means "I want the real model": never hide failures
+    # behind the mock, surface them so they can be fixed.
     if settings.gemma_api_key:
-        providers.append(("Gemma API", _ask_gemma_api))
-    providers.append(("Ollama", _ask_gemma))
-
-    for name, ask in providers:
-        for attempt in (1, 2):
+        last = "no response"
+        for attempt in (1, 2, 3):
             try:
-                return await ask(parsed, persona, spice)
+                return await _ask_gemma_api(parsed, persona, spice)
             except (json.JSONDecodeError, ValidationError, KeyError, IndexError) as exc:
-                log.warning("%s returned unusable JSON (attempt %d): %s", name, attempt, exc)
+                last = f"model returned unusable JSON ({exc.__class__.__name__})"
+                log.warning("Gemma API bad output (attempt %d): %s", attempt, exc)
             except httpx.HTTPStatusError as exc:
-                log.warning("%s rejected the request (HTTP %s); trying next provider.", name, exc.response.status_code)
-                break
+                last = f"HTTP {exc.response.status_code}: {_api_error(exc.response)}"
+                log.warning("Gemma API error (attempt %d): %s", attempt, last)
+                if exc.response.status_code in (429, 500, 503) and attempt < 3:
+                    await asyncio.sleep(2 * attempt)
+                    continue
+                break  # 400/401/403/404 won't fix themselves
             except httpx.HTTPError as exc:
-                log.warning("%s unavailable (%s); trying next provider.", name, exc.__class__.__name__)
-                break
+                last = f"network error ({exc.__class__.__name__})"
+                log.warning("Gemma API unreachable (attempt %d): %s", attempt, exc)
+        raise EngineError(f"The Gemma API call failed — {last}")
+
+    # No API key: try local Ollama, then fall back to the labelled demo/mock engine.
+    for attempt in (1, 2):
+        try:
+            return await _ask_gemma(parsed, persona, spice)
+        except (json.JSONDecodeError, ValidationError, KeyError) as exc:
+            log.warning("Ollama returned unusable JSON (attempt %d): %s", attempt, exc)
+        except httpx.HTTPError as exc:
+            log.warning("Ollama unavailable (%s); using mock engine.", exc.__class__.__name__)
+            break
     return generate_mock_roast(parsed, persona, spice)
+
+
+class EngineError(RuntimeError):
+    """The configured AI provider failed; message is safe to show the user."""
+
+
+def _api_error(resp: httpx.Response) -> str:
+    try:
+        return str(resp.json()["error"]["message"])[:300]
+    except Exception:
+        return resp.text[:200]
